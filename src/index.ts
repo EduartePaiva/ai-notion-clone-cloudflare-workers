@@ -1,26 +1,51 @@
+import { createClerkClient } from '@clerk/backend';
+import { Context, Next } from 'hono';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+
 import OpenAI from 'openai';
 
 type Bindings = {
 	OPEN_AI_KEY: string;
+	CORS_ORIGIN: string;
+	CLERK_JWT_KEY: string;
 	AI: Ai;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.use(
-	'/*',
-	cors({
-		origin: '*', //Allow requests from your next.js app
-		allowHeaders: ['X-Custom-Header', 'Upgrade-Insecure-Requests', 'Content-Type'], // Add content-type to the allowed headers to fix CORS
-		allowMethods: ['POST', 'GET', 'OPTIONS', 'PUT'],
+const clerkCLient = createClerkClient({});
+
+const originCors: string[] = [];
+
+app.use('/*', async (c, next) => {
+	const corsMiddleware = cors({
+		origin: c.env.CORS_ORIGIN, //Allow requests from your next.js app
+		allowHeaders: ['X-Custom-Header', 'Upgrade-Insecure-Requests', 'Content-Type', 'Authorization'], // Add content-type to the allowed headers to fix CORS
+		allowMethods: ['POST', 'GET', 'OPTIONS'],
 		maxAge: 600,
 		credentials: true,
-	})
-);
+	});
 
-app.post('/translateDocument', async (c) => {
+	return corsMiddleware(c, next);
+});
+
+app.get('/', (c) => {
+	return new Response('hello world');
+});
+
+const authMiddleware = async (c: Context<{ Bindings: Bindings }>, next: Next) => {
+	const { isSignedIn } = await clerkCLient.authenticateRequest(c.req.raw, {
+		jwtKey: c.env.CLERK_JWT_KEY,
+		authorizedParties: [c.env.CORS_ORIGIN],
+	});
+	if (!isSignedIn) {
+		return Response.json({ status: 401 });
+	}
+	await next();
+};
+
+app.post('/translateDocument', authMiddleware, async (c) => {
 	const { documentData, targetLang } = await c.req.json();
 
 	// Generate a summary of the document
