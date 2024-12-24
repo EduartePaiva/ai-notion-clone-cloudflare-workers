@@ -1,11 +1,11 @@
-import { createClerkClient } from '@clerk/backend';
 import { Context, Next } from 'hono';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 
 import OpenAI from 'openai';
+import { verifyClerkSessionToken } from './utils';
 
-type Bindings = {
+export type Bindings = {
 	OPEN_AI_KEY: string;
 	CORS_ORIGIN: string;
 	CLERK_JWT_KEY: string;
@@ -13,10 +13,6 @@ type Bindings = {
 };
 
 const app = new Hono<{ Bindings: Bindings }>();
-
-const clerkCLient = createClerkClient({});
-
-const originCors: string[] = [];
 
 app.use('/*', async (c, next) => {
 	const corsMiddleware = cors({
@@ -35,12 +31,9 @@ app.get('/', (c) => {
 });
 
 const authMiddleware = async (c: Context<{ Bindings: Bindings }>, next: Next) => {
-	const { isSignedIn } = await clerkCLient.authenticateRequest(c.req.raw, {
-		jwtKey: c.env.CLERK_JWT_KEY,
-		authorizedParties: [c.env.CORS_ORIGIN],
-	});
-	if (!isSignedIn) {
-		return Response.json({ status: 401 });
+	const { error } = await verifyClerkSessionToken(c.req.header('Authorization'), c.env.CLERK_JWT_KEY, c.env.CORS_ORIGIN);
+	if (error !== null) {
+		return new Response(error, { status: 401 });
 	}
 	await next();
 };
@@ -64,7 +57,7 @@ app.post('/translateDocument', authMiddleware, async (c) => {
 	return new Response(JSON.stringify(response));
 });
 
-app.post('/chatToDocument', async (c) => {
+app.post('/chatToDocument', authMiddleware, async (c) => {
 	const openai = new OpenAI({
 		apiKey: c.env.OPEN_AI_KEY,
 	});
