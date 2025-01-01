@@ -44,7 +44,7 @@ app.post('/translateDocument', authMiddleware, async (c) => {
 	// Generate a summary of the document
 	const summaryResponse = await c.env.AI.run('@cf/facebook/bart-large-cnn', {
 		input_text: documentData,
-		max_length: 1000,
+		max_length: 5000,
 	});
 
 	// translate the summary into another language
@@ -74,7 +74,7 @@ app.post('/chatToDocument', authMiddleware, async (c) => {
 				content: `My question is: ${question}`,
 			},
 		],
-		model: 'gpt-4o',
+		model: 'gpt-4o-mini',
 		temperature: 0.5,
 	});
 
